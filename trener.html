@@ -18,7 +18,7 @@
   .logo{display:flex; align-items:center; gap:12px;}
   .logo-badge{width:44px; height:44px; border-radius:10px; background:linear-gradient(135deg,var(--accent),#0077ff);
     display:grid; place-items:center; font-weight:800; font-size:18px; color:#04121b;}
-  .logo h1{font-size:20px;}
+  .logo h1{font-size:20px;} .grant-note{font-size:14px; font-weight:500; color:var(--accent); white-space:nowrap;}
   .logo p{color:var(--dim); font-size:13px;}
   .toolbar{display:flex; gap:8px; flex-wrap:wrap; align-items:center;}
   .btn{cursor:pointer; font:inherit; font-size:13px; padding:8px 14px; background:var(--panel2); color:var(--text);
@@ -171,6 +171,21 @@
     background:linear-gradient(90deg,rgba(0,212,255,.12),rgba(0,119,255,.06)); border:1px solid rgba(0,212,255,.35); font-size:14px;}
   .grant b{color:var(--accent);}
   .grant-badge{font-size:12px; font-weight:700; letter-spacing:.3px; padding:4px 10px; border-radius:999px; background:var(--accent); color:#04121b; white-space:nowrap;}
+  #pilots tr{cursor:pointer;} #pilots tr:hover td{background:rgba(255,255,255,.03);}
+  #pilots .pname{border-bottom:1px dotted var(--dim);} #pilots td.trk{color:var(--dim); font-size:13px;}
+  .sortlbl{font-size:12px; color:var(--dim); align-self:center; margin-right:2px;}
+  .pstats{display:flex; gap:10px; flex-wrap:wrap; margin:6px 0 16px;}
+  .pstat{background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:8px 12px; min-width:110px;}
+  .pstat b{display:block; font-size:18px; color:var(--accent);} .pstat span{font-size:12px; color:var(--dim);}
+  .ptrack{border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:12px; background:var(--panel2);}
+  .ptrack h4{display:flex; gap:8px; align-items:center; flex-wrap:wrap; font-size:15px; margin-bottom:4px;}
+  .ptrack .prog{font-size:13px; color:var(--dim); margin-bottom:8px;} .ptrack .prog b{color:var(--ok);}
+  .ptrack svg{width:100%; height:70px; display:block; margin-bottom:6px;}
+  .ptrack table{font-size:13px;} .ptrack td,.ptrack th{padding:5px 6px;}
+  .dfast{color:var(--ok);} .dslow{color:var(--bad);} .best{color:var(--accent); font-weight:700;}
+  .addlap{display:grid; gap:8px; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); align-items:end; margin-top:8px;}
+  .addlap label{display:flex; flex-direction:column; gap:3px; font-size:11px; color:var(--dim); text-transform:uppercase;}
+  .addlap input,.addlap select{font:inherit; font-size:14px; color:var(--text); background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:6px 8px; width:100%;}
   footer{color:var(--dim); font-size:12px; text-align:center; margin-top:20px;}
 </style>
 </head>
@@ -180,7 +195,7 @@
   <div class="logo">
     <div class="logo-badge">ВЗ</div>
     <div>
-      <h1>Клуб «Взлёт» <span class="coach-badge coach-only">тренер</span></h1>
+      <h1>Клуб «Взлёт» <span class="grant-note">(при поддержке Росмолодёжь.Гранты)</span> <span class="coach-badge coach-only">тренер</span></h1>
       <p>FPV-тренировки · с. Иртыш · Черлакский район · Омская область</p>
     </div>
   </div>
@@ -192,10 +207,6 @@
   </div>
 </header>
 
-<div class="grant">
-  <span class="grant-badge">Росмолодёжь.Гранты</span>
-  <span>Проект «Клуб БПЛА «Взлёт»» (с. Иртыш) реализуется благодаря поддержке <b>Росмолодёжь.Гранты</b></span>
-</div>
 <div class="banner hidden coach-only" id="setup">
   <b>Таблица ещё не подключена</b> — показаны данные-образец.<br>
   Вставьте ссылку на Google Таблицу (доступ «Все, у кого есть ссылка → Читатель»):
@@ -220,9 +231,11 @@
   <details class="card col-8" open data-tab="Пилоты">
     <summary>Рейтинг пилотов <span class="counter" id="c-pilots"></span></summary>
     <div class="chips" id="trackChips"></div>
+    <div class="chips" id="sortChips"></div>
+    <p class="muted" style="margin:-4px 0 8px">Нажмите на пилота — откроется его история заездов по трассам.</p>
     <div class="tscroll">
       <table>
-        <thead><tr><th>#</th><th>Пилот</th><th>Класс</th><th>Налёт, ч</th><th id='lapHead'>Лучший круг</th><th>Рейтинг</th></tr></thead>
+        <thead><tr><th>#</th><th>Пилот</th><th>Класс</th><th>Налёт, ч</th><th>Трасса</th><th id='lapHead'>Лучший круг</th><th>Рейтинг</th></tr></thead>
         <tbody id="pilots"></tbody>
       </table>
     </div>
@@ -260,6 +273,9 @@
   </details>
 </div>
 <div id="toast"></div>
+<div class="modal" id="pmodal" onclick="if(event.target===this)closePilot()">
+  <div class="modal-card"><button class="close-x" onclick="closePilot()">✕</button><div id="pbody"></div></div>
+</div>
 
 <footer id="footer"></footer>
 
@@ -491,17 +507,85 @@ function renderChips(){
   $('trackChips').querySelectorAll('.chip').forEach(b=> b.onclick=()=>setTrack(b.dataset.t));
 }
 
+let curSort='rating';
+function renderSort(){
+  $('sortChips').innerHTML = `<span class="sortlbl">Сортировка:</span>`+
+    [['rating','По рейтингу'],['leaders','🏆 Лидеры (лучшее время)']].map(([v,l])=>`<button class="chip ${v===curSort?'on':''}" data-s="${v}">${l}</button>`).join('');
+  $('sortChips').querySelectorAll('.chip').forEach(b=> b.onclick=()=>{ curSort=b.dataset.s; renderPilots(); });
+}
 function renderPilots(){
-  renderChips();
+  renderChips(); renderSort();
   $('lapHead').textContent = curTrack ? 'Круг на трассе' : 'Лучший круг';
-  const list = [...(data['Пилоты']||[])].sort((a,b)=> num(b['Рейтинг']) - num(a['Рейтинг']));
+  let list = [...(data['Пилоты']||[])].map(p=>({p, b:bestFor(p['Пилот'], curTrack)}));
+  if(curSort==='leaders') list.sort((x,y)=> (x.b?x.b.sec:Infinity) - (y.b?y.b.sec:Infinity) || num(y.p['Рейтинг'])-num(x.p['Рейтинг']));
+  else list.sort((x,y)=> num(y.p['Рейтинг']) - num(x.p['Рейтинг']));
   $('c-pilots').textContent = list.length;
-  $('pilots').innerHTML = list.map((p,i)=>{
+  $('pilots').innerHTML = list.map(({p,b},i)=>{
     const r = Math.max(0, Math.min(100, num(p['Рейтинг'])));
-    return `<tr><td class="rank ${i<3?'top':''}">${i+1}</td><td>${esc(p['Пилот'])}</td><td>${esc(p['Класс'])}</td>
-      <td>${esc(p['Налёт, ч'])}</td><td class="lap">${lapCell(p)}</td>
+    const lap = b ? fmtLap(b.sec) : (curTrack ? '—' : esc(p['Лучший круг'] || '—'));
+    const trk = b ? esc(b.track) : (curTrack ? esc(curTrack) : '—');
+    return `<tr data-p="${esc(p['Пилот'])}"><td class="rank ${i<3?'top':''}">${i+1}</td><td><span class="pname">${esc(p['Пилот'])}</span> ›</td><td>${esc(p['Класс'])}</td>
+      <td>${esc(p['Налёт, ч'])}</td><td class="trk">${trk}</td><td class="lap">${lap}</td>
       <td style="min-width:140px"><div class="rating-cell"><b>${r}</b><div class="bar"><i style="width:${r}%"></i></div></div></td></tr>`;
-  }).join('') || '<tr><td colspan="6" class="empty">Пилотов пока нет</td></tr>';
+  }).join('') || '<tr><td colspan="7" class="empty">Пилотов пока нет</td></tr>';
+  $('pilots').querySelectorAll('tr[data-p]').forEach(tr=> tr.onclick=()=>openPilot(tr.dataset.p));
+}
+
+/* ---------- карточка пилота: история заездов по трассам ---------- */
+function spark(ls){
+  if(ls.length<2) return '';
+  const W=600,H=70,P=8, xs=ls.map((_,i)=>P+i*(W-2*P)/(ls.length-1));
+  const mn=Math.min(...ls.map(l=>l.sec)), mx=Math.max(...ls.map(l=>l.sec)), rg=(mx-mn)||1;
+  const ys=ls.map(l=>P+(l.sec-mn)/rg*(H-2*P));   // быстрее = выше
+  const pts=xs.map((x,i)=>`${x.toFixed(1)},${(H-ys[i]).toFixed(1)}`);
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><polyline points="${pts.join(' ')}" fill="none" stroke="var(--accent)" stroke-width="2.5" vector-effect="non-scaling-stroke"/>`+
+    pts.map(p=>`<circle cx="${p.split(',')[0]}" cy="${p.split(',')[1]}" r="3.5" fill="var(--accent)"/>`).join('')+`</svg>`;
+}
+let openPilotName='';
+function openPilot(name){
+  openPilotName=name;
+  const p=(data['Пилоты']||[]).find(x=>normName(x['Пилот'])===normName(name))||{'Пилот':name};
+  const my=laps().filter(l=>normName(l.pilot)===normName(name));
+  const byTrack={}; my.forEach(l=>(byTrack[l.track]=byTrack[l.track]||[]).push(l));
+  const best=bestFor(name,'');
+  let html=`<h2>${esc(p['Пилот'])}</h2><p class="sub">${esc(p['Класс']||'')}</p>
+    <div class="pstats"><div class="pstat"><b>${esc(p['Рейтинг']||'—')}</b><span>рейтинг</span></div>
+    <div class="pstat"><b>${esc(p['Налёт, ч']||'0')}</b><span>налёт, ч</span></div>
+    <div class="pstat"><b>${my.length}</b><span>заездов записано</span></div>
+    <div class="pstat"><b>${best?fmtLap(best.sec):'—'}</b><span>лучший круг${best?' · '+esc(best.track):''}</span></div></div>`;
+  html += Object.entries(byTrack).map(([t,ls])=>{
+    ls.sort((a,b)=>(parseDate(a.date)||0)-(parseDate(b.date)||0));
+    const bst=Math.min(...ls.map(l=>l.sec)), first=ls[0].sec, f=String(ls[0].fmt||'').toLowerCase();
+    const gain=first-bst;
+    const rows=ls.map((l,i)=>{ const d=i?l.sec-ls[i-1].sec:null;
+      return `<tr><td>${esc(l.date||'—')}</td><td class="${l.sec===bst?'best':''}">${fmtLap(l.sec)}${l.sec===bst?' 🏆':''}</td>
+        <td class="${d===null?'':d<0?'dfast':d>0?'dslow':''}">${d===null?'—':(d<0?'▼ ':d>0?'▲ +':'')+(d<0?'−'+Math.abs(d).toFixed(1):d.toFixed(1))+' с'}</td></tr>`; }).reverse().join('');
+    return `<div class="ptrack"><h4>${esc(t)} ${f?`<span class="tag ${f.startsWith('сим')?'sim':'real'}">${esc(ls[0].fmt)}</span>`:''}</h4>
+      <div class="prog">Заездов: ${ls.length} · первый ${fmtLap(first)} → лучший ${fmtLap(bst)}${gain>0?` · <b>быстрее на ${gain.toFixed(1)} с</b>`:''}</div>
+      ${spark(ls)}
+      <table><thead><tr><th>Дата</th><th>Время круга</th><th>К прошлому</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }).join('') || '<p class="empty">Заездов пока нет.</p>';
+  if(MODE!=='public'){
+    html += `<h3 style="margin-top:16px">Добавить заезд</h3>
+      <datalist id="trackList">${tracks().map(t=>`<option value="${esc(t)}">`).join('')}</datalist>
+      <div class="addlap"><label>Дата<input id="al-date" value="${todayStr()}"></label>
+        <label>Трасса<input id="al-track" list="trackList" value="${esc(curTrack||best?.track||'')}"></label>
+        <label>Время круга<input id="al-time" placeholder="00:49.3"></label>
+        <label>Формат<select id="al-fmt"><option>симулятор</option><option>реал</option></select></label>
+        <button class="btn primary" id="al-save">+ Добавить</button></div>`;
+  }
+  $('pbody').innerHTML=html; $('pmodal').classList.add('open');
+  const sv=document.getElementById('al-save'); if(sv) sv.onclick=()=>addLap(name, sv);
+}
+function closePilot(){ $('pmodal').classList.remove('open'); openPilotName=''; }
+
+async function addLap(name, btn){
+  const t=$('al-track').value.trim(), tm=$('al-time').value.trim();
+  if(!t || !lapSec(tm)){ toast('Укажите трассу и время, например 00:49.3','bad'); return; }
+  const rows=[...(data['Заезды']||[]), {'Дата':$('al-date').value.trim(),'Пилот':name,'Трасса':t,'Время круга':tm,'Формат':$('al-fmt').value}];
+  btn.disabled=true; btn.textContent='Сохраняю…';
+  try{ await postSheet('Заезды', rows); renderAll(); openPilot(name); toast('Заезд добавлен ✓','ok'); }
+  catch(e){ toast('Не сохранилось: '+e.message,'bad'); btn.disabled=false; btn.textContent='+ Добавить'; }
 }
 
 function lapCell(p){
@@ -591,7 +675,7 @@ function renderAll(){
 
 function openModal(){ $('modal').classList.add('open'); }
 function closeModal(){ $('modal').classList.remove('open'); }
-document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ closeModal(); closePilot(); } });
 
 /* ---------- режим: тренер / группа ---------- */
 function applyMode(){
@@ -688,22 +772,24 @@ function openEditor(card, sheet){
   ed.querySelector('.save').onclick=()=>saveEditor(card, sheet, list, ed.querySelector('.save'));
 }
 
+async function postSheet(sheet, rows){
+  if(!SCRIPT_URL || SCRIPT_URL.startsWith('__')) throw new Error('сохранение ещё не подключено');
+  let pin=ls.get(PIN_KEY);
+  if(!pin){ pin=prompt('Введите PIN тренера для сохранения:'); if(!pin) throw new Error('PIN не введён'); }
+  const r=await fetch(SCRIPT_URL,{method:'POST', body:JSON.stringify({key:pin, sheet, rows})});
+  const res=await r.json();
+  if(!res.ok){ if(/PIN/i.test(res.error||'')) ls.del(PIN_KEY); throw new Error(res.error||'ошибка'); }
+  ls.set(PIN_KEY,pin);
+  data[sheet]=rows; ls.set(CACHE_KEY, JSON.stringify({t:Date.now(), id:sheetId(), data}));
+}
+
 async function saveEditor(card, sheet, list, btn){
   const rows=[...list.querySelectorAll('.erow')].map(el=>{
     const r={}; el.querySelectorAll('[data-c]').forEach(f=>r[f.dataset.c]=f.value.trim()); return r;
   }).filter(r=>Object.values(r).some(v=>v!=='' && v!=='нет'));
-  if(!SCRIPT_URL || SCRIPT_URL.startsWith('__')){ toast('Сохранение ещё не подключено','bad'); return; }
-  let pin=ls.get(PIN_KEY);
-  if(!pin){ pin=prompt('Введите PIN тренера для сохранения:'); if(!pin) return; }
   btn.disabled=true; btn.textContent='Сохраняю…';
-  try{
-    const r=await fetch(SCRIPT_URL,{method:'POST', body:JSON.stringify({key:pin, sheet, rows})});
-    const res=await r.json();
-    if(!res.ok){ if(/PIN/i.test(res.error||'')) ls.del(PIN_KEY); throw new Error(res.error||'ошибка'); }
-    ls.set(PIN_KEY,pin);
-    data[sheet]=rows; ls.set(CACHE_KEY, JSON.stringify({t:Date.now(), id:sheetId(), data}));
-    closeEditor(card); renderAll(); toast('Сохранено ✓','ok');
-  }catch(e){ toast('Не сохранилось: '+e.message,'bad'); btn.disabled=false; btn.textContent='Сохранить'; }
+  try{ await postSheet(sheet, rows); closeEditor(card); renderAll(); toast('Сохранено ✓','ok'); }
+  catch(e){ toast('Не сохранилось: '+e.message,'bad'); btn.disabled=false; btn.textContent='Сохранить'; }
 }
 
 document.querySelectorAll('.tab').forEach(t=> t.onclick=()=>{
