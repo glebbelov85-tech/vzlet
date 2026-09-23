@@ -147,6 +147,25 @@
   .edit{margin-left:10px; font-size:12px; text-transform:none; letter-spacing:0; color:var(--dim); text-decoration:none; border:1px solid var(--line); border-radius:6px; padding:1px 8px;}
   .edit:hover{color:var(--accent); border-color:var(--accent);}
   .coach-badge{font-size:11px; padding:2px 8px; border-radius:6px; background:#3d1d0b; color:#ffab6c; margin-left:8px; vertical-align:middle;}
+  details.editing > :not(summary):not(.editor){display:none !important;}
+  .editor{display:flex; flex-direction:column; gap:10px;}
+  .erow{position:relative; display:grid; gap:8px; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); background:var(--panel2);
+    border:1px solid var(--line); border-radius:10px; padding:10px 38px 10px 10px;}
+  .erow label{display:flex; flex-direction:column; gap:3px; font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.3px;}
+  .erow label.wide{grid-column:1/-1;}
+  .erow input,.erow select,.erow textarea{font:inherit; font-size:14px; text-transform:none; letter-spacing:0; color:var(--text); background:var(--bg);
+    border:1px solid var(--line); border-radius:6px; padding:6px 8px; width:100%;}
+  .erow textarea{min-height:60px; resize:vertical;}
+  .erow input:focus,.erow select:focus,.erow textarea:focus{outline:none; border-color:var(--accent);}
+  .erow .del{position:absolute; top:6px; right:6px; background:none; border:none; color:var(--dim); font-size:16px; cursor:pointer; padding:4px 6px;}
+  .erow .del:hover{color:var(--bad);}
+  .ebar{display:flex; gap:8px; flex-wrap:wrap; align-items:center; position:sticky; bottom:0; background:var(--panel); padding-top:6px;}
+  .ebar .sp{flex:1;}
+  .edit{cursor:pointer; background:none; font:inherit; white-space:nowrap;}
+  .edit.on{color:var(--accent); border-color:var(--accent);}
+  #toast{position:fixed; bottom:20px; left:50%; transform:translate(-50%,20px); background:var(--panel2); border:1px solid var(--line); color:var(--text);
+    padding:10px 18px; border-radius:10px; font-size:14px; opacity:0; transition:.25s; pointer-events:none; z-index:200; max-width:90vw;}
+  #toast.show{opacity:1; transform:translate(-50%,0);} #toast.bad{border-color:var(--bad);} #toast.ok{border-color:var(--ok);}
   footer{color:var(--dim); font-size:12px; text-align:center; margin-top:20px;}
 </style>
 </head>
@@ -163,7 +182,7 @@
   <div class="toolbar">
     <span class="status" id="status"><i></i><span>загрузка…</span></span>
     <button class="btn coach-only" onclick="loadData(true)">↻ Обновить</button>
-    <a class="btn coach-only" id="editBtn" target="_blank" href="#">✎ Редактировать</a>
+    <a class="btn coach-only" id="editBtn" target="_blank" href="#" title="Открыть Google Таблицу">▦ Таблица</a>
     <button class="btn primary" onclick="openModal()">📖 Справка</button>
   </div>
 </header>
@@ -185,8 +204,8 @@
     <summary>Ближайшие события <span class="counter" id="c-events"></span></summary>
     <div id="events"></div>
   </details>
-  <details class="card col-4 coach-only" open data-tab="Задачи">
-    <summary>Задачи тренера <span class="counter" id="c-tasks"></span></summary>
+  <details class="card col-4" open data-tab="Задачи">
+    <summary>Задачи клуба <span class="counter" id="c-tasks"></span></summary>
     <div id="tasks"></div>
   </details>
   <details class="card col-8" open data-tab="Пилоты">
@@ -220,7 +239,13 @@
     <div class="tscroll"><table><thead><tr><th>#</th><th>Пилот</th><th>Регион</th><th>Очки</th></tr></thead><tbody id="rus"></tbody></table></div>
     <p class="muted" id="rus-note" style="margin-top:10px"></p>
   </details>
+  <details class="card col-12 coach-only" data-tab="more">
+    <summary>Другие разделы: плитки, контакты, ссылки, справка</summary>
+    <div class="chips" id="moreChips"></div>
+    <p class="muted" id="moreHint">Выберите, что редактировать.</p>
+  </details>
 </div>
+<div id="toast"></div>
 
 <footer id="footer"></footer>
 
@@ -259,7 +284,8 @@
    дашборд у всех сразу открывается с вашими данными.
    ============================================================ */
 const SHEET_ID = '1GNVM7smAVzjOVK77FzJ_HfDQ9lI85DCSt0idMU8GJqk';
-const MODE = 'public';   // 'coach' — версия тренера, 'public' — для группы
+const MODE = 'public';
+const SCRIPT_URL = '';  // адрес Apps Script, через который тренерская версия сохраняет правки   // 'coach' — версия тренера, 'public' — для группы
 
 const REFRESH_MIN = 5;            // автообновление, минут
 const LS_KEY = 'vzlet_sheet_id';
@@ -548,27 +574,122 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
 function applyMode(){
   if(MODE==='public'){
     document.querySelectorAll('.coach-only').forEach(e=>e.remove());
-    // перестраиваем сетку без «Задач»: события + расписание рядом, рейтинг на всю ширину
-    const ev=document.querySelector('[data-tab="События"]'), sc=document.querySelector('[data-tab="Расписание"]'), pl=document.querySelector('[data-tab="Пилоты"]');
-    ev.after(sc); pl.className='card col-12';
+
   } else {
     document.querySelectorAll('details[data-tab]').forEach(d=>{
-      const a=document.createElement('a'); a.className='edit'; a.target='_blank'; a.textContent='✎ '+d.dataset.tab;
-      a.title='Открыть таблицу — вкладка «'+d.dataset.tab+'»';
-      a.onclick=e=>{ e.stopPropagation(); const id=sheetId(); if(!id){ e.preventDefault(); $('sheetUrl').focus(); return; } a.href=`https://docs.google.com/spreadsheets/d/${id}/edit`; };
+      if(d.dataset.tab==='more') return;
+      const b=document.createElement('button'); b.className='edit'; b.textContent='✎ Изменить';
+      b.onclick=e=>{ e.preventDefault(); e.stopPropagation(); d.open=true; openEditor(d, d.dataset.tab); };
       const sm=d.querySelector('summary'), cnt=sm.querySelector('.counter');
-      if(cnt){ cnt.style.marginRight='0'; cnt.after(a); } else sm.appendChild(a);
-      a.style.marginRight='auto';
+      if(cnt){ cnt.style.marginRight='0'; cnt.after(b); } else sm.appendChild(b);
+      b.style.marginRight='auto';
     });
+    const more=document.querySelector('[data-tab="more"]');
+    $('moreChips').innerHTML = MORE.map(n=>`<button class="chip" data-s="${esc(n)}">${esc(n)}</button>`).join('');
+    $('moreChips').querySelectorAll('.chip').forEach(c=> c.onclick=()=>openEditor(more, c.dataset.s));
   }
 }
+
+/* ============================================================
+   РЕДАКТОР (только тренерская версия)
+   Правки отправляются в Google Таблицу через Apps Script.
+   ============================================================ */
+const MORE = ['Показатели','Контакты','Ссылки','Классы','Правила'];
+const SCHEMA = {
+  'Пилоты':['Пилот','Класс','Налёт, ч','Лучший круг','Рейтинг'],
+  'События':['Дата','Название','Место','Тип','Метка'],
+  'Задачи':['Задача','Выполнено'],
+  'Расписание':['День','Время','Занятие','Примечание'],
+  'Новости':['Дата','Текст','Ссылка'],
+  'Ссылки':['Название','Адрес'],
+  'Контакты':['ФИО','Роль','Организация','Контакты'],
+  'Показатели':['Показатель','Значение','Подпись'],
+  'Статус':['Параметр','Значение'],
+  'Заезды':['Дата','Пилот','Трасса','Время круга','Формат'],
+  'Рейтинг России':['Место','Пилот','Регион','Очки','Дисциплина'],
+  'Классы':['Класс','Размер','Взлётный вес','Аккумулятор','Моторы и пропеллеры','Связь и видео','Особенности'],
+  'Правила':['Тема','Текст']
+};
+const SELECTS = {'Тип':['симулятор','реал','другое'], 'Выполнено':['нет','да'], 'Формат':['симулятор','реал'], 'День':['Пн','Вт','Ср','Чт','Пт','Сб','Вс']};
+const LONG = new Set(['Текст','Особенности','Задача']);
+const HINT = {'Дата':'дд.мм.гггг','Время круга':'00:49.3','Лучший круг':'00:49.3','Рейтинг':'0–100','Время':'18:00','Адрес':'https://…','Налёт, ч':'часы'};
+const todayStr = () => new Date().toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'});
+const PIN_KEY = 'vzlet_pin';
+
+function toast(msg, cls=''){ const t=$('toast'); t.textContent=msg; t.className='show '+cls; clearTimeout(t._t); t._t=setTimeout(()=>t.className='',3000); }
+
+function fieldHTML(sheet, col, val){
+  const v = esc(val);
+  let ctl;
+  if(SELECTS[col]){
+    const opts = SELECTS[col].includes(String(val)) || !val ? SELECTS[col] : [String(val), ...SELECTS[col]];
+    ctl = `<select data-c="${esc(col)}">${opts.map(o=>`<option ${String(o)===String(val)?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
+  } else if(LONG.has(col)) ctl = `<textarea data-c="${esc(col)}">${v}</textarea>`;
+  else ctl = `<input data-c="${esc(col)}" value="${v}" placeholder="${esc(HINT[col]||'')}" ${col==='Пилот'&&sheet!=='Пилоты'?'list="pilotList"':''}>`;
+  return `<label class="${LONG.has(col)?'wide':''}">${esc(col)}${ctl}</label>`;
+}
+function rowHTML(sheet, r){
+  return `<div class="erow">${SCHEMA[sheet].map(c=>fieldHTML(sheet,c,r[c]??'')).join('')}<button class="del" title="Удалить строку">✕</button></div>`;
+}
+function newRow(sheet){
+  const r={}; SCHEMA[sheet].forEach(c=>r[c]='');
+  if('Дата' in r && sheet!=='События') r['Дата']=todayStr();
+  if(sheet==='Задачи') r['Выполнено']='нет';
+  if(sheet==='Пилоты'){ r['Рейтинг']='0'; r['Налёт, ч']='0'; }
+  if(sheet==='Заезды' && curTrack) r['Трасса']=curTrack;
+  return r;
+}
+
+function closeEditor(card){ card.classList.remove('editing'); card.querySelector('.editor')?.remove(); card.querySelector('.edit')?.classList.remove('on'); }
+
+function openEditor(card, sheet){
+  closeEditor(card);
+  card.classList.add('editing'); card.querySelector('.edit')?.classList.add('on');
+  const ed=document.createElement('div'); ed.className='editor';
+  const rows=(data[sheet]||[]);
+  ed.innerHTML = `<p class="muted">Раздел «${esc(sheet)}». Изменения увидят все после «Сохранить».</p>
+    <datalist id="pilotList">${(data['Пилоты']||[]).map(p=>`<option value="${esc(p['Пилот'])}">`).join('')}</datalist>
+    <div class="erows">${rows.map(r=>rowHTML(sheet,r)).join('')}</div>
+    <div class="ebar"><button class="btn add">+ Добавить</button><span class="sp"></span>
+      <button class="btn cancel">Отмена</button><button class="btn primary save">Сохранить</button></div>`;
+  card.appendChild(ed);
+  const list=ed.querySelector('.erows');
+  const bindDel = el => el.querySelector('.del').onclick=()=>el.remove();
+  list.querySelectorAll('.erow').forEach(bindDel);
+  ed.querySelector('.add').onclick=()=>{
+    list.insertAdjacentHTML('beforeend', rowHTML(sheet,newRow(sheet)));
+    const el=list.lastElementChild; bindDel(el); el.scrollIntoView({block:'center',behavior:'smooth'});
+    el.querySelector('input,textarea,select')?.focus();
+  };
+  ed.querySelector('.cancel').onclick=()=>closeEditor(card);
+  ed.querySelector('.save').onclick=()=>saveEditor(card, sheet, list, ed.querySelector('.save'));
+}
+
+async function saveEditor(card, sheet, list, btn){
+  const rows=[...list.querySelectorAll('.erow')].map(el=>{
+    const r={}; el.querySelectorAll('[data-c]').forEach(f=>r[f.dataset.c]=f.value.trim()); return r;
+  }).filter(r=>Object.values(r).some(v=>v!=='' && v!=='нет'));
+  if(!SCRIPT_URL || SCRIPT_URL.startsWith('__')){ toast('Сохранение ещё не подключено','bad'); return; }
+  let pin=ls.get(PIN_KEY);
+  if(!pin){ pin=prompt('Введите PIN тренера для сохранения:'); if(!pin) return; }
+  btn.disabled=true; btn.textContent='Сохраняю…';
+  try{
+    const r=await fetch(SCRIPT_URL,{method:'POST', body:JSON.stringify({key:pin, sheet, rows})});
+    const res=await r.json();
+    if(!res.ok){ if(/PIN/i.test(res.error||'')) ls.del(PIN_KEY); throw new Error(res.error||'ошибка'); }
+    ls.set(PIN_KEY,pin);
+    data[sheet]=rows; ls.set(CACHE_KEY, JSON.stringify({t:Date.now(), id:sheetId(), data}));
+    closeEditor(card); renderAll(); toast('Сохранено ✓','ok');
+  }catch(e){ toast('Не сохранилось: '+e.message,'bad'); btn.disabled=false; btn.textContent='Сохранить'; }
+}
+
 document.querySelectorAll('.tab').forEach(t=> t.onclick=()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===t));
   document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('hidden',p.id!==t.dataset.p));
 });
 applyMode();
 loadData();
-setInterval(()=>{ if(sheetId() && !document.hidden) loadData(); }, REFRESH_MIN*60*1000);
+setInterval(()=>{ if(sheetId() && !document.hidden && !document.querySelector('.editing')) loadData(); }, REFRESH_MIN*60*1000);
 </script>
 </body>
 </html>
